@@ -1,14 +1,6 @@
-<!DOCTYPE html>
-<html>
-<head><title>Dashboard</title></head>
-<body>
-  <h2>Welcome, {{ username }}</h2>
-  <p>Your role is: {{ role }}</p>
-
-  {% if role == 'admin' %}
-    <a href="{{ url_for('admin_panel') }}">Go to Admin Panel</a><br>
-  {% endif %}
-
-  <a href="{{ url_for('logout') }}">Logout</a>
-</body>
-</html>
+<h1>Welcome, {{ username }}!</h1>
+<p>Your role is: {{ role }}</p>
+{% if role == 'admin' %}
+  <a href="{{ url_for('admin_panel') }}">Go to Admin Panel</a><br>
+{% endif %}
+<a href="{{ url_for('logout') }}">Logout</a>

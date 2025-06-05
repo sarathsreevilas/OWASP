@@ -1,72 +1,42 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask import Flask, render_template, request, redirect, session, flash, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
-from functools import wraps
+import os
 
-# ----------------------------------------
-# ✅ Initialize Flask App and Config
-# ----------------------------------------
 app = Flask(__name__)
-app.secret_key = 'your_secret_key_here'  # 🔐 Needed for sessions
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'  # local SQLite DB
+app.secret_key = 'supersecretkey'
+
+
+# Database configuration (📁 inside 'instance/users.db')
+basedir = os.path.abspath(os.path.dirname(__file__))
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'instance', 'users.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# ----------------------------------------
-# ✅ Initialize DB and Bcrypt
-# ----------------------------------------
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
 
-# ----------------------------------------
-# ✅ User Model (Database Table)
-# ----------------------------------------
+# 🔧 User model with role-based access control
 class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)  # Unique ID
-    username = db.Column(db.String(100), unique=True, nullable=False)  # Unique username
-    password = db.Column(db.String(200), nullable=False)  # Hashed password
-    role = db.Column(db.String(20), default='user')  # 🆕 'admin' or 'user'
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(100), unique=True, nullable=False)
+    password = db.Column(db.String(200), nullable=False)
+    role = db.Column(db.String(20), default='user')  # user or admin
 
-# ----------------------------------------
-# ✅ Decorator for Admin-Only Routes
-# ----------------------------------------
-def admin_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'user_id' not in session:
-            flash('Login required.', 'error')
-            return redirect(url_for('login'))
-        user = User.query.get(session['user_id'])
-        if not user or user.role != 'admin':
-            flash('Access denied: Admins only.', 'error')
-            return redirect(url_for('dashboard'))
-        return f(*args, **kwargs)
-    return decorated_function
-
-# ----------------------------------------
-# ✅ Routes
-# ----------------------------------------
-
+# 🏠 Home route
 @app.route('/')
 def home():
-    return redirect(url_for('login'))
+    return render_template('home.html')
 
 # 🔐 Register Route
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        username = request.form['username']
-        raw_pw = request.form['password']
-        hashed_pw = bcrypt.generate_password_hash(raw_pw).decode('utf-8')
-
-        # First user = admin, rest = user
-        role = 'admin' if User.query.count() == 0 else 'user'
-
-        new_user = User(username=username, password=hashed_pw, role=role)
+        hashed_pw = bcrypt.generate_password_hash(request.form['password']).decode('utf-8')
+        new_user = User(username=request.form['username'], password=hashed_pw, role=request.form.get('role', 'user'))
         db.session.add(new_user)
         db.session.commit()
-        flash('Registration successful. Please login.', 'success')
+        flash('Registered successfully. Please log in.', 'success')
         return redirect(url_for('login'))
-
     return render_template('register.html')
 
 # 🔐 Login Route
@@ -82,12 +52,33 @@ def login():
             return redirect(url_for('dashboard'))
         else:
             flash('Invalid credentials.', 'error')
-
     return render_template('login.html')
 
+# 🔓 Dashboard route with RBAC check
+@app.route('/dashboard')
+def dashboard():
+    if 'user_id' not in session:
+        flash('Please login first.', 'error')
+        return redirect(url_for('login'))
 
+    if session['role'] == 'admin':
+        return render_template('dashboard.html', username=session['username'], role='Admin')
+    else:
+        return render_template('dashboard.html', username=session['username'], role='User')
+
+# 🚪 Logout
+@app.route('/logout')
+def logout():
+    session.clear()
+    flash('Logged out successfully.', 'info')
+    return redirect(url_for('login'))
+
+# 📦 Create database if not exists
+if not os.path.exists('instance'):
+    os.makedirs('instance')
+
+with app.app_context():
+    db.create_all()
 
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()  # 🔧 Creates users.db and User table if not exists
-    app.run(debug=True)  # 🔥 Starts Flask app at http://127.0.0.1:5000/
+    app.run(debug=True)
